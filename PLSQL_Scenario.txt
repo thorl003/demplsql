@@ -1,0 +1,704 @@
+================================================================================
+ORACLE PL/SQL - SOLVED SCENARIOS: TRIGGERS, PROCEDURES, FUNCTIONS
+================================================================================
+
+INDEX (ALL PROBLEMS HAVE COPY-PASTEABLE SQL*PLUS CODE)
+  PROBLEM 00: ONE-TIME DATABASE/SCHEMA & DATASET INITIALIZATION
+  PROBLEM 01: SIMPLE ANONYMOUS PL/SQL BLOCK
+  PROBLEM 02: PROCEDURE TO PRINT A MESSAGE (IN)
+  PROBLEM 03: PROCEDURE USING SELECT INTO + NO_DATA_FOUND
+  PROBLEM 04: PROCEDURE TO UPDATE EMPLOYEE SALARY
+  PROBLEM 05: PROCEDURE TO RETURN COUNT USING OUT
+  PROBLEM 06: PROCEDURE TO CHANGE A VARIABLE USING IN OUT
+  PROBLEM 07: PROCEDURE WITH DEFAULT ARGUMENT
+  PROBLEM 08: PROCEDURE WITH ZERO_DIVIDE EXCEPTION
+  PROBLEM 09: PROCEDURE THAT LOOPS OVER CURSOR
+  PROBLEM 10: PROCEDURE THAT CALLS ANOTHER PROCEDURE
+  PROBLEM 11: FUNCTION TO COMPUTE SQUARE
+  PROBLEM 12: FUNCTION TO COMPUTE GRADE
+  PROBLEM 13: FUNCTION TO RETURN ANNUAL SALARY
+  PROBLEM 14: FUNCTION TO COUNT EMPLOYEES IN A DEPARTMENT
+  PROBLEM 15: FUNCTION TO CALCULATE FACTORIAL
+  PROBLEM 16: CALL A FUNCTION INSIDE PL/SQL
+  PROBLEM 17: FUNCTION TO COMPUTE BONUS PERCENTAGE
+  PROBLEM 18: BEFORE ROW TRIGGER TO VALIDATE SALARY
+  PROBLEM 19: AFTER INSERT ROW TRIGGER TO AUDIT INSERT
+  PROBLEM 20: AFTER UPDATE ROW TRIGGER TO AUDIT SALARY CHANGE
+  PROBLEM 21: AFTER DELETE ROW TRIGGER TO AUDIT DELETION
+  PROBLEM 22: BEFORE UPDATE STATEMENT TRIGGER
+  PROBLEM 23: WHEN CONDITION IN A ROW-LEVEL TRIGGER
+  PROBLEM 24: BEFORE ROW TRIGGER TO MODIFY :NEW
+  PROBLEM 25: INSERTING / UPDATING / DELETING TRIGGER
+  PROBLEM 26: COMPOUND TRIGGER FOR UPDATED-ROW COUNT
+  PROBLEM 27: INSPECT ALL CREATED TRIGGERS AND OBJECTS
+  PROBLEM 28: DISABLE / ENABLE / COMPILE TRIGGER
+  PROBLEM 29: SAVEPOINT + ROLLBACK WITH AUDIT TRIGGER
+
+HOW TO RUN
+  1. [CMD] sqlplus /nolog
+  2. [SQL>] CONNECT college@localhost:1521/XEPDB1
+  3. [SQL>] SET SERVEROUTPUT ON
+  4. Run Problem 00 ONCE in a FRESH lab schema (or @00_PLSQL_Setup.sql).
+  5. Run Problems 01 to 29 IN ORDER to follow the sample data changes.
+  6. For a fully automatic run: @C:\sql_lab\Scenario_RunAll.sql
+  7. Paste only SQL/PLSQL/PROMPT lines, not the === and --- visual separators.
+  8. Each CREATE PROCEDURE/FUNCTION/TRIGGER must finish with / alone.
+
+--------------------------------------------------------------------------------
+PROBLEM 00: ONE-TIME DATABASE/SCHEMA & DATASET INITIALIZATION
+--------------------------------------------------------------------------------
+Goal       : Create PLX_* lab tables, sequences and sample dataset.
+Key Ops    : CREATE TABLE, CREATE SEQUENCE, INSERT, COMMIT
+Run Once   : YES, in a fresh schema.
+
+-- ============================================================================
+-- 00_PLSQL_Setup.sql -- RUN ONCE IN A FRESH COLLEGE (OR OTHER LAB) SCHEMA
+-- This file CREATES PLX_* tables and sample rows; existing names cause errors.
+-- ============================================================================
+SET SERVEROUTPUT ON SIZE UNLIMITED
+SET LINESIZE 160
+SET PAGESIZE 100
+SET VERIFY OFF
+
+PROMPT === 00: CREATE TABLES ===
+CREATE TABLE plx_dept (
+  dept_id NUMBER PRIMARY KEY,
+  dept_name VARCHAR2(40) NOT NULL UNIQUE
+);
+
+CREATE TABLE plx_emp (
+  emp_id NUMBER PRIMARY KEY,
+  emp_name VARCHAR2(50) NOT NULL,
+  dept_id NUMBER REFERENCES plx_dept(dept_id),
+  salary NUMBER(10,2) NOT NULL,
+  hire_date DATE DEFAULT SYSDATE NOT NULL,
+  status VARCHAR2(12) DEFAULT 'ACTIVE' NOT NULL,
+  updated_at DATE DEFAULT SYSDATE NOT NULL,
+  CONSTRAINT plx_emp_salary_ck CHECK (salary >= 0)
+);
+
+CREATE TABLE plx_audit (
+  audit_id NUMBER PRIMARY KEY,
+  emp_id NUMBER,
+  action_type VARCHAR2(30),
+  old_salary NUMBER(10,2),
+  new_salary NUMBER(10,2),
+  logged_at TIMESTAMP
+);
+
+CREATE SEQUENCE plx_audit_seq START WITH 1 INCREMENT BY 1;
+
+CREATE TABLE plx_events (
+  event_id NUMBER PRIMARY KEY,
+  event_label VARCHAR2(120),
+  event_at TIMESTAMP DEFAULT SYSTIMESTAMP
+);
+
+CREATE SEQUENCE plx_event_seq START WITH 1 INCREMENT BY 1;
+
+CREATE TABLE plx_bonus (
+  bonus_id NUMBER PRIMARY KEY,
+  emp_id NUMBER REFERENCES plx_emp(emp_id),
+  bonus_amount NUMBER(10,2),
+  created_at DATE DEFAULT SYSDATE
+);
+
+CREATE SEQUENCE plx_bonus_seq START WITH 1 INCREMENT BY 1;
+
+PROMPT === 00: INSERT SAMPLE VALUES ===
+INSERT INTO plx_dept VALUES (10, 'IT');
+INSERT INTO plx_dept VALUES (20, 'CSE');
+INSERT INTO plx_dept VALUES (30, 'ECE');
+
+INSERT INTO plx_emp(emp_id, emp_name, dept_id, salary, hire_date)
+VALUES (101, 'Arun', 10, 50000, DATE '2024-06-10');
+INSERT INTO plx_emp(emp_id, emp_name, dept_id, salary, hire_date)
+VALUES (102, 'Bina', 10, 62000, DATE '2023-08-12');
+INSERT INTO plx_emp(emp_id, emp_name, dept_id, salary, hire_date)
+VALUES (103, 'Chitra', 20, 74000, DATE '2022-01-15');
+INSERT INTO plx_emp(emp_id, emp_name, dept_id, salary, hire_date)
+VALUES (104, 'Dev', 30, 39000, DATE '2025-02-01');
+COMMIT;
+SELECT emp_id, emp_name, dept_id, salary FROM plx_emp ORDER BY emp_id;
+
+--------------------------------------------------------------------------------
+PROBLEM 01: SIMPLE ANONYMOUS PL/SQL BLOCK
+--------------------------------------------------------------------------------
+Goal       : Simple anonymous pl/sql block.
+Key Ops    : PROCEDURE, SQL*Plus, PL/SQL
+
+PROMPT === PROBLEM 01: HELLO / ANONYMOUS BLOCK ===
+BEGIN
+  DBMS_OUTPUT.PUT_LINE('Hello from PL/SQL');
+END;
+/
+
+--------------------------------------------------------------------------------
+PROBLEM 02: PROCEDURE TO PRINT A MESSAGE (IN)
+--------------------------------------------------------------------------------
+Goal       : Procedure to print a message (in).
+Key Ops    : PROCEDURE, SQL*Plus, PL/SQL
+
+PROMPT === PROBLEM 02: SIMPLE PROCEDURE ===
+CREATE OR REPLACE PROCEDURE plx_pr_greet(p_name IN VARCHAR2)
+AS
+BEGIN
+  DBMS_OUTPUT.PUT_LINE('Welcome ' || p_name);
+END;
+/
+EXEC plx_pr_greet('Arun')
+
+--------------------------------------------------------------------------------
+PROBLEM 03: PROCEDURE USING SELECT INTO + NO_DATA_FOUND
+--------------------------------------------------------------------------------
+Goal       : Procedure using select into + no_data_found.
+Key Ops    : PROCEDURE, SQL*Plus, PL/SQL
+
+PROMPT === PROBLEM 03: PROCEDURE WITH SELECT INTO ===
+CREATE OR REPLACE PROCEDURE plx_pr_show_employee(p_id IN NUMBER)
+AS
+  v_name plx_emp.emp_name%TYPE;
+  v_salary plx_emp.salary%TYPE;
+BEGIN
+  SELECT emp_name, salary INTO v_name, v_salary
+  FROM plx_emp WHERE emp_id = p_id;
+  DBMS_OUTPUT.PUT_LINE('Employee: ' || v_name || ', Salary: ' || v_salary);
+EXCEPTION
+  WHEN NO_DATA_FOUND THEN
+    DBMS_OUTPUT.PUT_LINE('No employee for ID ' || p_id);
+END;
+/
+EXEC plx_pr_show_employee(101)
+EXEC plx_pr_show_employee(999)
+
+--------------------------------------------------------------------------------
+PROBLEM 04: PROCEDURE TO UPDATE EMPLOYEE SALARY
+--------------------------------------------------------------------------------
+Goal       : Procedure to update employee salary.
+Key Ops    : PROCEDURE, SQL*Plus, PL/SQL
+
+PROMPT === PROBLEM 04: PROCEDURE THAT UPDATES SALARY ===
+CREATE OR REPLACE PROCEDURE plx_pr_raise_salary(
+  p_id IN NUMBER, p_raise IN NUMBER
+)
+AS
+BEGIN
+  IF p_raise <= 0 OR p_raise IS NULL THEN
+    RAISE_APPLICATION_ERROR(-20001, 'Raise must be positive');
+  END IF;
+  UPDATE plx_emp SET salary = salary + p_raise WHERE emp_id = p_id;
+  IF SQL%ROWCOUNT = 0 THEN
+    RAISE_APPLICATION_ERROR(-20002, 'Employee not found');
+  END IF;
+  DBMS_OUTPUT.PUT_LINE('Updated salary for ID ' || p_id);
+END;
+/
+EXEC plx_pr_raise_salary(101, 1000)
+SELECT emp_id, salary FROM plx_emp WHERE emp_id = 101;
+COMMIT;
+
+--------------------------------------------------------------------------------
+PROBLEM 05: PROCEDURE TO RETURN COUNT USING OUT
+--------------------------------------------------------------------------------
+Goal       : Procedure to return count using out.
+Key Ops    : PROCEDURE, SQL*Plus, PL/SQL
+
+PROMPT === PROBLEM 05: PROCEDURE WITH OUT PARAMETER ===
+CREATE OR REPLACE PROCEDURE plx_pr_dept_count(
+  p_dept_id IN NUMBER, p_count OUT NUMBER
+)
+AS
+BEGIN
+  SELECT COUNT(*) INTO p_count FROM plx_emp WHERE dept_id = p_dept_id;
+END;
+/
+VARIABLE v_count NUMBER
+EXEC plx_pr_dept_count(10, :v_count)
+PRINT v_count
+
+--------------------------------------------------------------------------------
+PROBLEM 06: PROCEDURE TO CHANGE A VARIABLE USING IN OUT
+--------------------------------------------------------------------------------
+Goal       : Procedure to change a variable using in out.
+Key Ops    : PROCEDURE, SQL*Plus, PL/SQL
+
+PROMPT === PROBLEM 06: PROCEDURE WITH IN OUT PARAMETER ===
+CREATE OR REPLACE PROCEDURE plx_pr_add_to_amount(
+  p_amount IN OUT NUMBER, p_extra IN NUMBER
+)
+AS
+BEGIN
+  p_amount := NVL(p_amount, 0) + p_extra;
+END;
+/
+VARIABLE v_amount NUMBER
+EXEC :v_amount := 100
+EXEC plx_pr_add_to_amount(:v_amount, 25)
+PRINT v_amount
+
+--------------------------------------------------------------------------------
+PROBLEM 07: PROCEDURE WITH DEFAULT ARGUMENT
+--------------------------------------------------------------------------------
+Goal       : Procedure with default argument.
+Key Ops    : PROCEDURE, SQL*Plus, PL/SQL
+
+PROMPT === PROBLEM 07: DEFAULT PARAMETER ===
+CREATE OR REPLACE PROCEDURE plx_pr_greet_dept(
+  p_name IN VARCHAR2, p_dept IN VARCHAR2 DEFAULT 'IT'
+)
+AS
+BEGIN
+  DBMS_OUTPUT.PUT_LINE(p_name || ' belongs to ' || p_dept);
+END;
+/
+EXEC plx_pr_greet_dept('Bina')
+EXEC plx_pr_greet_dept('Chitra', 'CSE')
+
+--------------------------------------------------------------------------------
+PROBLEM 08: PROCEDURE WITH ZERO_DIVIDE EXCEPTION
+--------------------------------------------------------------------------------
+Goal       : Procedure with zero_divide exception.
+Key Ops    : PROCEDURE, SQL*Plus, PL/SQL
+
+PROMPT === PROBLEM 08: PROCEDURE WITH EXCEPTION HANDLING ===
+CREATE OR REPLACE PROCEDURE plx_pr_safe_divide(
+  p_num IN NUMBER, p_den IN NUMBER
+)
+AS
+  v_answer NUMBER;
+BEGIN
+  v_answer := p_num / p_den;
+  DBMS_OUTPUT.PUT_LINE('Result = ' || v_answer);
+EXCEPTION
+  WHEN ZERO_DIVIDE THEN
+    DBMS_OUTPUT.PUT_LINE('Cannot divide by zero');
+END;
+/
+EXEC plx_pr_safe_divide(10, 2)
+EXEC plx_pr_safe_divide(10, 0)
+
+--------------------------------------------------------------------------------
+PROBLEM 09: PROCEDURE THAT LOOPS OVER CURSOR
+--------------------------------------------------------------------------------
+Goal       : Procedure that loops over cursor.
+Key Ops    : PROCEDURE, SQL*Plus, PL/SQL
+
+PROMPT === PROBLEM 09: PROCEDURE USING EXPLICIT CURSOR ===
+CREATE OR REPLACE PROCEDURE plx_pr_list_employees
+AS
+  CURSOR c_emp IS
+    SELECT emp_id, emp_name, salary FROM plx_emp ORDER BY emp_id;
+BEGIN
+  FOR r IN c_emp LOOP
+    DBMS_OUTPUT.PUT_LINE(r.emp_id || ' ' || r.emp_name || ' ' || r.salary);
+  END LOOP;
+END;
+/
+EXEC plx_pr_list_employees
+
+--------------------------------------------------------------------------------
+PROBLEM 10: PROCEDURE THAT CALLS ANOTHER PROCEDURE
+--------------------------------------------------------------------------------
+Goal       : Procedure that calls another procedure.
+Key Ops    : PROCEDURE, SQL*Plus, PL/SQL
+
+PROMPT === PROBLEM 10: PROCEDURE CALLING PROCEDURE ===
+CREATE OR REPLACE PROCEDURE plx_pr_employee_report(p_id IN NUMBER)
+AS
+BEGIN
+  DBMS_OUTPUT.PUT_LINE('--- Employee report ---');
+  plx_pr_show_employee(p_id);
+END;
+/
+EXEC plx_pr_employee_report(102)
+
+--------------------------------------------------------------------------------
+PROBLEM 11: FUNCTION TO COMPUTE SQUARE
+--------------------------------------------------------------------------------
+Goal       : Function to compute square.
+Key Ops    : FUNCTION, SQL*Plus, PL/SQL
+
+PROMPT === PROBLEM 11: SQUARE FUNCTION ===
+CREATE OR REPLACE FUNCTION plx_fn_square(p_num IN NUMBER)
+RETURN NUMBER
+AS
+BEGIN
+  RETURN p_num * p_num;
+END;
+/
+SELECT plx_fn_square(6) AS result FROM dual;
+
+--------------------------------------------------------------------------------
+PROBLEM 12: FUNCTION TO COMPUTE GRADE
+--------------------------------------------------------------------------------
+Goal       : Function to compute grade.
+Key Ops    : FUNCTION, SQL*Plus, PL/SQL
+
+PROMPT === PROBLEM 12: GRADE FUNCTION ===
+CREATE OR REPLACE FUNCTION plx_fn_grade(p_mark IN NUMBER)
+RETURN VARCHAR2
+AS
+BEGIN
+  IF p_mark IS NULL OR p_mark < 0 OR p_mark > 100 THEN
+    RETURN 'INVALID';
+  ELSIF p_mark >= 90 THEN
+    RETURN 'A';
+  ELSIF p_mark >= 75 THEN
+    RETURN 'B';
+  ELSIF p_mark >= 50 THEN
+    RETURN 'C';
+  ELSE
+    RETURN 'FAIL';
+  END IF;
+END;
+/
+SELECT plx_fn_grade(92) AS grade_92,
+       plx_fn_grade(48) AS grade_48 FROM dual;
+
+--------------------------------------------------------------------------------
+PROBLEM 13: FUNCTION TO RETURN ANNUAL SALARY
+--------------------------------------------------------------------------------
+Goal       : Function to return annual salary.
+Key Ops    : FUNCTION, SQL*Plus, PL/SQL
+
+PROMPT === PROBLEM 13: ANNUAL SALARY USING SELECT INTO ===
+CREATE OR REPLACE FUNCTION plx_fn_annual_salary(p_id IN NUMBER)
+RETURN NUMBER
+AS
+  v_monthly plx_emp.salary%TYPE;
+BEGIN
+  SELECT salary INTO v_monthly FROM plx_emp WHERE emp_id = p_id;
+  RETURN v_monthly * 12;
+EXCEPTION
+  WHEN NO_DATA_FOUND THEN
+    RAISE_APPLICATION_ERROR(-20013, 'Employee ID does not exist');
+END;
+/
+SELECT emp_name, plx_fn_annual_salary(emp_id) AS annual_salary
+FROM plx_emp ORDER BY emp_id;
+
+--------------------------------------------------------------------------------
+PROBLEM 14: FUNCTION TO COUNT EMPLOYEES IN A DEPARTMENT
+--------------------------------------------------------------------------------
+Goal       : Function to count employees in a department.
+Key Ops    : FUNCTION, SQL*Plus, PL/SQL
+
+PROMPT === PROBLEM 14: DEPARTMENT EMPLOYEE COUNT FUNCTION ===
+CREATE OR REPLACE FUNCTION plx_fn_dept_count(p_dept_id IN NUMBER)
+RETURN NUMBER
+AS
+  v_total NUMBER;
+BEGIN
+  SELECT COUNT(*) INTO v_total FROM plx_emp WHERE dept_id = p_dept_id;
+  RETURN v_total;
+END;
+/
+SELECT dept_name, plx_fn_dept_count(dept_id) AS employee_count
+FROM plx_dept ORDER BY dept_id;
+
+--------------------------------------------------------------------------------
+PROBLEM 15: FUNCTION TO CALCULATE FACTORIAL
+--------------------------------------------------------------------------------
+Goal       : Function to calculate factorial.
+Key Ops    : FUNCTION, SQL*Plus, PL/SQL
+
+PROMPT === PROBLEM 15: FACTORIAL USING LOOP ===
+CREATE OR REPLACE FUNCTION plx_fn_factorial(p_n IN NUMBER)
+RETURN NUMBER
+AS
+  v_result NUMBER := 1;
+BEGIN
+  IF p_n IS NULL OR p_n < 0 OR p_n > 20 OR p_n != TRUNC(p_n) THEN
+    RAISE_APPLICATION_ERROR(-20015, 'Use an integer between 0 and 20');
+  END IF;
+  FOR i IN 1..p_n LOOP
+    v_result := v_result * i;
+  END LOOP;
+  RETURN v_result;
+END;
+/
+SELECT plx_fn_factorial(5) AS factorial_5 FROM dual;
+
+--------------------------------------------------------------------------------
+PROBLEM 16: CALL A FUNCTION INSIDE PL/SQL
+--------------------------------------------------------------------------------
+Goal       : Call a function inside pl/sql.
+Key Ops    : FUNCTION, SQL*Plus, PL/SQL
+
+PROMPT === PROBLEM 16: FUNCTION USED INSIDE PL/SQL ===
+DECLARE
+  v_total NUMBER;
+BEGIN
+  v_total := plx_fn_annual_salary(102);
+  DBMS_OUTPUT.PUT_LINE('Annual salary for 102 = ' || v_total);
+END;
+/
+
+--------------------------------------------------------------------------------
+PROBLEM 17: FUNCTION TO COMPUTE BONUS PERCENTAGE
+--------------------------------------------------------------------------------
+Goal       : Function to compute bonus percentage.
+Key Ops    : FUNCTION, SQL*Plus, PL/SQL
+
+PROMPT === PROBLEM 17: SIMPLE BONUS FUNCTION ===
+CREATE OR REPLACE FUNCTION plx_fn_bonus(p_salary IN NUMBER, p_rate IN NUMBER)
+RETURN NUMBER
+AS
+BEGIN
+  IF p_rate < 0 OR p_rate > 100 OR p_rate IS NULL THEN
+    RAISE_APPLICATION_ERROR(-20017, 'Rate must be in range 0 to 100');
+  END IF;
+  RETURN ROUND(p_salary * p_rate / 100, 2);
+END;
+/
+SELECT emp_name, salary, plx_fn_bonus(salary, 10) AS bonus_10_percent
+FROM plx_emp ORDER BY emp_id;
+
+--------------------------------------------------------------------------------
+PROBLEM 18: BEFORE ROW TRIGGER TO VALIDATE SALARY
+--------------------------------------------------------------------------------
+Goal       : Before row trigger to validate salary.
+Key Ops    : TRIGGER, SQL*Plus, PL/SQL
+
+PROMPT === PROBLEM 18: BEFORE INSERT OR UPDATE VALIDATION TRIGGER ===
+CREATE OR REPLACE TRIGGER plx_tr_salary_guard
+BEFORE INSERT OR UPDATE OF salary ON plx_emp
+FOR EACH ROW
+BEGIN
+  IF :NEW.salary < 10000 THEN
+    RAISE_APPLICATION_ERROR(-20101, 'Salary must be at least 10000');
+  END IF;
+END;
+/
+-- Validate error safely (exception caught, so the full script continues).
+BEGIN
+  INSERT INTO plx_emp(emp_id, emp_name, dept_id, salary)
+  VALUES (999, 'Bad Salary', 10, 1000);
+EXCEPTION
+  WHEN OTHERS THEN
+    DBMS_OUTPUT.PUT_LINE('Expected validation error: ' || SQLERRM);
+END;
+/
+SELECT COUNT(*) AS rejected_bad_salary FROM plx_emp WHERE emp_id = 999;
+
+--------------------------------------------------------------------------------
+PROBLEM 19: AFTER INSERT ROW TRIGGER TO AUDIT INSERT
+--------------------------------------------------------------------------------
+Goal       : After insert row trigger to audit insert.
+Key Ops    : TRIGGER, SQL*Plus, PL/SQL
+
+PROMPT === PROBLEM 19: AFTER INSERT ROW TRIGGER ===
+CREATE OR REPLACE TRIGGER plx_tr_insert_audit
+AFTER INSERT ON plx_emp
+FOR EACH ROW
+BEGIN
+  INSERT INTO plx_audit(audit_id, emp_id, action_type, old_salary,
+                        new_salary, logged_at)
+  VALUES (plx_audit_seq.NEXTVAL, :NEW.emp_id, 'INSERT', NULL,
+          :NEW.salary, SYSTIMESTAMP);
+END;
+/
+INSERT INTO plx_emp(emp_id, emp_name, dept_id, salary)
+VALUES (105, 'Esha', 20, 48000);
+COMMIT;
+SELECT * FROM plx_audit WHERE emp_id = 105;
+
+--------------------------------------------------------------------------------
+PROBLEM 20: AFTER UPDATE ROW TRIGGER TO AUDIT SALARY CHANGE
+--------------------------------------------------------------------------------
+Goal       : After update row trigger to audit salary change.
+Key Ops    : TRIGGER, SQL*Plus, PL/SQL
+
+PROMPT === PROBLEM 20: AFTER UPDATE ROW TRIGGER ===
+CREATE OR REPLACE TRIGGER plx_tr_update_audit
+AFTER UPDATE OF salary ON plx_emp
+FOR EACH ROW
+BEGIN
+  INSERT INTO plx_audit(audit_id, emp_id, action_type, old_salary,
+                        new_salary, logged_at)
+  VALUES (plx_audit_seq.NEXTVAL, :NEW.emp_id, 'UPDATE', :OLD.salary,
+          :NEW.salary, SYSTIMESTAMP);
+END;
+/
+UPDATE plx_emp SET salary = salary + 500 WHERE emp_id = 101;
+COMMIT;
+SELECT * FROM plx_audit WHERE emp_id = 101 ORDER BY audit_id;
+
+--------------------------------------------------------------------------------
+PROBLEM 21: AFTER DELETE ROW TRIGGER TO AUDIT DELETION
+--------------------------------------------------------------------------------
+Goal       : After delete row trigger to audit deletion.
+Key Ops    : TRIGGER, SQL*Plus, PL/SQL
+
+PROMPT === PROBLEM 21: AFTER DELETE ROW TRIGGER ===
+CREATE OR REPLACE TRIGGER plx_tr_delete_audit
+AFTER DELETE ON plx_emp
+FOR EACH ROW
+BEGIN
+  INSERT INTO plx_audit(audit_id, emp_id, action_type, old_salary,
+                        new_salary, logged_at)
+  VALUES (plx_audit_seq.NEXTVAL, :OLD.emp_id, 'DELETE', :OLD.salary,
+          NULL, SYSTIMESTAMP);
+END;
+/
+DELETE FROM plx_emp WHERE emp_id = 104;
+COMMIT;
+SELECT * FROM plx_audit WHERE emp_id = 104 ORDER BY audit_id;
+
+--------------------------------------------------------------------------------
+PROBLEM 22: BEFORE UPDATE STATEMENT TRIGGER
+--------------------------------------------------------------------------------
+Goal       : Before update statement trigger.
+Key Ops    : TRIGGER, SQL*Plus, PL/SQL
+
+PROMPT === PROBLEM 22: BEFORE UPDATE STATEMENT LEVEL TRIGGER ===
+CREATE OR REPLACE TRIGGER plx_tr_update_statement
+BEFORE UPDATE OF salary ON plx_emp
+BEGIN
+  INSERT INTO plx_events(event_id, event_label, event_at)
+  VALUES (plx_event_seq.NEXTVAL, 'Salary UPDATE statement started', SYSTIMESTAMP);
+END;
+/
+UPDATE plx_emp SET salary = salary + 50 WHERE dept_id = 10;
+COMMIT;
+SELECT * FROM plx_events ORDER BY event_id;
+
+--------------------------------------------------------------------------------
+PROBLEM 23: WHEN CONDITION IN A ROW-LEVEL TRIGGER
+--------------------------------------------------------------------------------
+Goal       : When condition in a row-level trigger.
+Key Ops    : TRIGGER, SQL*Plus, PL/SQL
+
+PROMPT === PROBLEM 23: TRIGGER WITH WHEN CONDITION ===
+CREATE OR REPLACE TRIGGER plx_tr_salary_increase
+AFTER UPDATE OF salary ON plx_emp
+FOR EACH ROW
+WHEN (NEW.salary > OLD.salary)
+BEGIN
+  DBMS_OUTPUT.PUT_LINE('Salary increased for employee ' || :NEW.emp_id);
+END;
+/
+UPDATE plx_emp SET salary = salary + 150 WHERE emp_id = 103;
+COMMIT;
+
+--------------------------------------------------------------------------------
+PROBLEM 24: BEFORE ROW TRIGGER TO MODIFY :NEW
+--------------------------------------------------------------------------------
+Goal       : Before row trigger to modify :new.
+Key Ops    : TRIGGER, SQL*Plus, PL/SQL
+
+PROMPT === PROBLEM 24: BEFORE UPDATE ROW TRIGGER ASSIGNS :NEW ===
+CREATE OR REPLACE TRIGGER plx_tr_set_updated_at
+BEFORE UPDATE ON plx_emp
+FOR EACH ROW
+BEGIN
+  :NEW.updated_at := SYSDATE;
+END;
+/
+UPDATE plx_emp SET status = 'ON_LEAVE' WHERE emp_id = 102;
+COMMIT;
+SELECT emp_id, status, updated_at FROM plx_emp WHERE emp_id = 102;
+
+--------------------------------------------------------------------------------
+PROBLEM 25: INSERTING / UPDATING / DELETING TRIGGER
+--------------------------------------------------------------------------------
+Goal       : Inserting / updating / deleting trigger.
+Key Ops    : TRIGGER, SQL*Plus, PL/SQL
+
+PROMPT === PROBLEM 25: MULTI-EVENT TRIGGER WITH INSERTING / UPDATING / DELETING ===
+CREATE OR REPLACE TRIGGER plx_tr_event_banner
+AFTER INSERT OR UPDATE OR DELETE ON plx_emp
+BEGIN
+  IF INSERTING THEN
+    DBMS_OUTPUT.PUT_LINE('INSERT statement on PLX_EMP');
+  ELSIF UPDATING THEN
+    DBMS_OUTPUT.PUT_LINE('UPDATE statement on PLX_EMP');
+  ELSIF DELETING THEN
+    DBMS_OUTPUT.PUT_LINE('DELETE statement on PLX_EMP');
+  END IF;
+END;
+/
+UPDATE plx_emp SET status = 'ACTIVE' WHERE emp_id = 102;
+COMMIT;
+
+--------------------------------------------------------------------------------
+PROBLEM 26: COMPOUND TRIGGER FOR UPDATED-ROW COUNT
+--------------------------------------------------------------------------------
+Goal       : Compound trigger for updated-row count.
+Key Ops    : TRIGGER, SQL*Plus, PL/SQL
+
+PROMPT === PROBLEM 26: COMPOUND TRIGGER (ADVANCED, COUNTS ROWS) ===
+CREATE OR REPLACE TRIGGER plx_tr_compound_count
+FOR UPDATE OF salary ON plx_emp
+COMPOUND TRIGGER
+  g_rows NUMBER := 0;
+  AFTER EACH ROW IS
+  BEGIN
+    g_rows := g_rows + 1;
+  END AFTER EACH ROW;
+  AFTER STATEMENT IS
+  BEGIN
+    DBMS_OUTPUT.PUT_LINE('Compound trigger updated rows = ' || g_rows);
+  END AFTER STATEMENT;
+END plx_tr_compound_count;
+/
+UPDATE plx_emp SET salary = salary + 1 WHERE dept_id = 10;
+COMMIT;
+
+--------------------------------------------------------------------------------
+PROBLEM 27: INSPECT ALL CREATED TRIGGERS AND OBJECTS
+--------------------------------------------------------------------------------
+Goal       : Inspect all created triggers and objects.
+Key Ops    : TRIGGER, SQL*Plus, PL/SQL
+
+PROMPT === PROBLEM 27: VIEW TRIGGER AND OBJECT INFORMATION ===
+SELECT trigger_name, trigger_type, triggering_event, status
+FROM user_triggers
+WHERE trigger_name LIKE 'PLX_%'
+ORDER BY trigger_name;
+SELECT object_name, object_type, status
+FROM user_objects
+WHERE object_name LIKE 'PLX_%'
+ORDER BY object_type, object_name;
+SELECT audit_id, emp_id, action_type, old_salary, new_salary
+FROM plx_audit ORDER BY audit_id;
+
+--------------------------------------------------------------------------------
+PROBLEM 28: DISABLE / ENABLE / COMPILE TRIGGER
+--------------------------------------------------------------------------------
+Goal       : Disable / enable / compile trigger.
+Key Ops    : TRIGGER, SQL*Plus, PL/SQL
+
+PROMPT === PROBLEM 28: ENABLE, DISABLE, COMPILE TRIGGER ===
+ALTER TRIGGER plx_tr_salary_guard DISABLE;
+ALTER TRIGGER plx_tr_salary_guard ENABLE;
+ALTER TRIGGER plx_tr_salary_guard COMPILE;
+PROMPT The salary guard is ENABLED again.
+
+--------------------------------------------------------------------------------
+PROBLEM 29: SAVEPOINT + ROLLBACK WITH AUDIT TRIGGER
+--------------------------------------------------------------------------------
+Goal       : Savepoint + rollback with audit trigger.
+Key Ops    : TRIGGER, SQL*Plus, PL/SQL
+
+PROMPT === PROBLEM 29: SAVEPOINT AND ROLLBACK OF AUDIT ROW ===
+SAVEPOINT before_demo_update;
+UPDATE plx_emp SET salary = salary + 333 WHERE emp_id = 101;
+SELECT emp_id, salary FROM plx_emp WHERE emp_id = 101;
+ROLLBACK TO before_demo_update;
+SELECT emp_id, salary FROM plx_emp WHERE emp_id = 101;
+PROMPT The UPDATE and its DML trigger's audit row were rolled back.
+
+PROMPT === FINAL DATA AFTER RUNNING ALL PROBLEMS ===
+SELECT emp_id, emp_name, dept_id, salary, status
+FROM plx_emp ORDER BY emp_id;
+SELECT audit_id, emp_id, action_type, old_salary, new_salary
+FROM plx_audit ORDER BY audit_id;
+
+--------------------------------------------------------------------------------
+NOTES
+--------------------------------------------------------------------------------
+  Existing object names: Run in fresh schema once; do not re-run the table setup.
+  Results depend on completing the earlier problems and commits.
+  Trigger examples execute automatically when INSERT, UPDATE, DELETE fires.
+  If examining individual problems, run 00_PLSQL_Setup.sql first.

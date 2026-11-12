@@ -1,0 +1,475 @@
+================================================================================
+ORACLE PL/SQL - MASTER SYNTAX: PROCEDURES, FUNCTIONS & TRIGGERS
+================================================================================
+
+INDEX
+  01. SQL*PLUS START, CONNECT AND SETTINGS
+  02. ANONYMOUS PL/SQL BLOCK
+  03. VARIABLE DECLARATIONS, %TYPE, %ROWTYPE
+  04. IF / ELSIF / ELSE
+  05. LOOP / WHILE / FOR
+  06. SELECT INTO + EXCEPTION
+  07. CREATE PROCEDURE WITH IN PARAMETER
+  08. CREATE PROCEDURE WITH OUT PARAMETER
+  09. CREATE PROCEDURE WITH IN OUT PARAMETER
+  10. PROCEDURE: INSERT / UPDATE / DELETE
+  11. CREATE FUNCTION RETURN NUMBER
+  12. CREATE FUNCTION RETURN VARCHAR2
+  13. FUNCTION SELECT INTO
+  14. FUNCTION CALL IN SELECT AND PL/SQL
+  15. PROCEDURE VS FUNCTION (EXAM DIFFERENCE)
+  16. CREATE BEFORE INSERT TRIGGER
+  17. CREATE AFTER INSERT TRIGGER
+  18. CREATE BEFORE UPDATE TRIGGER + :NEW
+  19. CREATE AFTER UPDATE TRIGGER + :OLD/:NEW
+  20. CREATE AFTER DELETE TRIGGER + :OLD
+  21. ROW-LEVEL VS STATEMENT-LEVEL TRIGGER
+  22. MULTI-EVENT TRIGGER + INSERTING/UPDATING/DELETING
+  23. WHEN CONDITION / UPDATING(column)
+  24. COMPOUND TRIGGER
+  25. EXCEPTION, RAISE_APPLICATION_ERROR
+  26. DBMS_OUTPUT, SQL%ROWCOUNT
+  27. CURSOR FOR LOOP IN PROCEDURE
+  28. ENABLE / DISABLE / RECOMPILE / DROP
+  29. SHOW ERRORS AND DATA DICTIONARY QUERIES
+  30. EXECUTE SQL FILES, SPOOL AND EXIT
+  31. ONE-PAGE RAPID REVISION COMMANDS
+
+CONVENTIONS
+  SQL*Plus commands work at SQL>. PL/SQL declarations end with / on new line.
+  Table-based examples require 00_PLSQL_Setup.sql in the same lab schema.
+  Multiple CREATE TRIGGER examples remain enabled until disabled/dropped.
+  Each code section can be copied individually; start with setup once.
+  Section 15 and 31 are explanatory lookup tables, NOT SQL code.
+
+--------------------------------------------------------------------------------
+01. SQL*PLUS START, CONNECT AND SETTINGS
+--------------------------------------------------------------------------------
+-- [CMD]  sqlplus /nolog
+-- [SQL>] Commands below:
+CONNECT college@localhost:1521/XEPDB1
+SHOW USER
+SET SERVEROUTPUT ON SIZE UNLIMITED
+SET LINESIZE 160
+SET PAGESIZE 100
+
+--------------------------------------------------------------------------------
+02. ANONYMOUS PL/SQL BLOCK
+--------------------------------------------------------------------------------
+BEGIN
+  DBMS_OUTPUT.PUT_LINE('Hello from PL/SQL');
+END;
+/
+
+--------------------------------------------------------------------------------
+03. VARIABLE DECLARATIONS, %TYPE, %ROWTYPE
+--------------------------------------------------------------------------------
+DECLARE
+  v_id NUMBER := 101;
+  v_name plx_emp.emp_name%TYPE;
+  v_row plx_emp%ROWTYPE;
+BEGIN
+  SELECT * INTO v_row FROM plx_emp WHERE emp_id = v_id;
+  v_name := v_row.emp_name;
+  DBMS_OUTPUT.PUT_LINE(v_name);
+END;
+/
+
+--------------------------------------------------------------------------------
+04. IF / ELSIF / ELSE
+--------------------------------------------------------------------------------
+DECLARE
+  v_marks NUMBER := 82;
+BEGIN
+  IF v_marks >= 90 THEN
+    DBMS_OUTPUT.PUT_LINE('A');
+  ELSIF v_marks >= 75 THEN
+    DBMS_OUTPUT.PUT_LINE('B');
+  ELSE
+    DBMS_OUTPUT.PUT_LINE('C');
+  END IF;
+END;
+/
+
+--------------------------------------------------------------------------------
+05. LOOP / WHILE / FOR
+--------------------------------------------------------------------------------
+BEGIN
+  FOR i IN 1..3 LOOP
+    DBMS_OUTPUT.PUT_LINE('FOR = ' || i);
+  END LOOP;
+END;
+/
+
+DECLARE
+  i NUMBER := 1;
+BEGIN
+  WHILE i <= 3 LOOP
+    DBMS_OUTPUT.PUT_LINE('WHILE = ' || i);
+    i := i + 1;
+  END LOOP;
+END;
+/
+
+--------------------------------------------------------------------------------
+06. SELECT INTO + EXCEPTION
+--------------------------------------------------------------------------------
+DECLARE
+  v_salary NUMBER;
+BEGIN
+  SELECT salary INTO v_salary FROM plx_emp WHERE emp_id = 101;
+  DBMS_OUTPUT.PUT_LINE(v_salary);
+EXCEPTION
+  WHEN NO_DATA_FOUND THEN DBMS_OUTPUT.PUT_LINE('No matching employee');
+  WHEN TOO_MANY_ROWS THEN DBMS_OUTPUT.PUT_LINE('More than one row');
+END;
+/
+
+--------------------------------------------------------------------------------
+07. CREATE PROCEDURE WITH IN PARAMETER
+--------------------------------------------------------------------------------
+CREATE OR REPLACE PROCEDURE plx_pr_example_in(p_id IN NUMBER)
+AS
+BEGIN
+  DBMS_OUTPUT.PUT_LINE('Input employee ID = ' || p_id);
+END;
+/
+EXEC plx_pr_example_in(101)
+
+--------------------------------------------------------------------------------
+08. CREATE PROCEDURE WITH OUT PARAMETER
+--------------------------------------------------------------------------------
+CREATE OR REPLACE PROCEDURE plx_pr_example_out(p_answer OUT NUMBER)
+AS
+BEGIN
+  p_answer := 100;
+END;
+/
+VARIABLE x NUMBER
+EXEC plx_pr_example_out(:x)
+PRINT x
+
+--------------------------------------------------------------------------------
+09. CREATE PROCEDURE WITH IN OUT PARAMETER
+--------------------------------------------------------------------------------
+CREATE OR REPLACE PROCEDURE plx_pr_example_inout(p_value IN OUT NUMBER)
+AS
+BEGIN
+  p_value := p_value + 10;
+END;
+/
+VARIABLE x2 NUMBER
+EXEC :x2 := 5
+EXEC plx_pr_example_inout(:x2)
+PRINT x2
+
+--------------------------------------------------------------------------------
+10. PROCEDURE: INSERT / UPDATE / DELETE
+--------------------------------------------------------------------------------
+-- Assumes PLX_EMP exists. Use a new emp_id if inserting twice.
+INSERT INTO plx_emp(emp_id, emp_name, dept_id, salary)
+VALUES (111, 'New Hire', 10, 42000);
+UPDATE plx_emp SET salary = 44000 WHERE emp_id = 111;
+DELETE FROM plx_emp WHERE emp_id = 111;
+ROLLBACK;
+
+-- A real procedure can put any of those statements between BEGIN/END.
+-- For a reusable insert procedure, see the Scenario example for updates.
+
+--------------------------------------------------------------------------------
+11. CREATE FUNCTION RETURN NUMBER
+--------------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION plx_fn_double(p_num IN NUMBER)
+RETURN NUMBER
+AS
+BEGIN
+  RETURN p_num * 2;
+END;
+/
+SELECT plx_fn_double(12) AS result FROM dual;
+
+--------------------------------------------------------------------------------
+12. CREATE FUNCTION RETURN VARCHAR2
+--------------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION plx_fn_pass(p_mark IN NUMBER)
+RETURN VARCHAR2
+AS
+BEGIN
+  IF p_mark >= 50 THEN
+    RETURN 'PASS';
+  ELSE
+    RETURN 'FAIL';
+  END IF;
+END;
+/
+SELECT plx_fn_pass(68) AS result FROM dual;
+
+--------------------------------------------------------------------------------
+13. FUNCTION SELECT INTO
+--------------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION plx_fn_salary(p_id IN NUMBER)
+RETURN NUMBER
+AS
+  v_salary NUMBER;
+BEGIN
+  SELECT salary INTO v_salary FROM plx_emp WHERE emp_id = p_id;
+  RETURN v_salary;
+EXCEPTION
+  WHEN NO_DATA_FOUND THEN
+    RAISE_APPLICATION_ERROR(-20201, 'Employee not found');
+END;
+/
+SELECT plx_fn_salary(101) AS salary FROM dual;
+
+--------------------------------------------------------------------------------
+14. FUNCTION CALL IN SELECT AND PL/SQL
+--------------------------------------------------------------------------------
+SELECT plx_fn_double(7) AS doubled FROM dual;
+
+BEGIN
+  DBMS_OUTPUT.PUT_LINE('From PL/SQL: ' || plx_fn_double(7));
+END;
+/
+
+--------------------------------------------------------------------------------
+15. PROCEDURE VS FUNCTION (EXAM DIFFERENCE)
+--------------------------------------------------------------------------------
+PROCEDURE                       FUNCTION
+-----------------------------------------------------------------------
+CREATE PROCEDURE                CREATE FUNCTION
+Called using EXEC proc(...)     SELECT func(...) FROM dual;
+Can have IN/OUT/IN OUT          Typically IN inputs for SQL-callable functions
+No mandatory RETURN value      RETURN datatype + RETURN expression required
+Often used for actions / DML   Often used for computing/returning a value
+
+-- Above is explanation, not executable SQL. Copy code from other sections.
+
+--------------------------------------------------------------------------------
+16. CREATE BEFORE INSERT TRIGGER
+--------------------------------------------------------------------------------
+CREATE OR REPLACE TRIGGER plx_tr_example_before_insert
+BEFORE INSERT ON plx_emp
+FOR EACH ROW
+BEGIN
+  IF :NEW.salary < 10000 THEN
+    RAISE_APPLICATION_ERROR(-20202, 'Salary too low');
+  END IF;
+END;
+/
+-- This trigger fires when an INSERT occurs. No EXEC trigger_name.
+
+--------------------------------------------------------------------------------
+17. CREATE AFTER INSERT TRIGGER
+--------------------------------------------------------------------------------
+CREATE OR REPLACE TRIGGER plx_tr_example_after_insert
+AFTER INSERT ON plx_emp
+FOR EACH ROW
+BEGIN
+  INSERT INTO plx_audit(audit_id, emp_id, action_type, old_salary,
+                        new_salary, logged_at)
+  VALUES (plx_audit_seq.NEXTVAL, :NEW.emp_id, 'EXAMPLE_INSERT', NULL,
+          :NEW.salary, SYSTIMESTAMP);
+END;
+/
+
+--------------------------------------------------------------------------------
+18. CREATE BEFORE UPDATE TRIGGER + :NEW
+--------------------------------------------------------------------------------
+CREATE OR REPLACE TRIGGER plx_tr_example_before_update
+BEFORE UPDATE ON plx_emp
+FOR EACH ROW
+BEGIN
+  :NEW.updated_at := SYSDATE;
+END;
+/
+
+--------------------------------------------------------------------------------
+19. CREATE AFTER UPDATE TRIGGER + :OLD/:NEW
+--------------------------------------------------------------------------------
+CREATE OR REPLACE TRIGGER plx_tr_example_after_update
+AFTER UPDATE OF salary ON plx_emp
+FOR EACH ROW
+BEGIN
+  DBMS_OUTPUT.PUT_LINE('Old=' || :OLD.salary || ', New=' || :NEW.salary);
+END;
+/
+-- Test: UPDATE plx_emp SET salary = salary + 1 WHERE emp_id = 101;
+-- Then ROLLBACK; if you are only testing.
+
+--------------------------------------------------------------------------------
+20. CREATE AFTER DELETE TRIGGER + :OLD
+--------------------------------------------------------------------------------
+CREATE OR REPLACE TRIGGER plx_tr_example_after_delete
+AFTER DELETE ON plx_emp
+FOR EACH ROW
+BEGIN
+  DBMS_OUTPUT.PUT_LINE('Deleted employee ID ' || :OLD.emp_id);
+END;
+/
+
+--------------------------------------------------------------------------------
+21. ROW-LEVEL VS STATEMENT-LEVEL TRIGGER
+--------------------------------------------------------------------------------
+-- Statement-level: NO FOR EACH ROW.
+CREATE OR REPLACE TRIGGER plx_tr_example_statement
+AFTER UPDATE OF status ON plx_emp
+BEGIN
+  DBMS_OUTPUT.PUT_LINE('One UPDATE statement completed');
+END;
+/
+
+-- Row-level: add FOR EACH ROW to run once per affected row.
+-- The example in previous section uses FOR EACH ROW.
+
+--------------------------------------------------------------------------------
+22. MULTI-EVENT TRIGGER + INSERTING/UPDATING/DELETING
+--------------------------------------------------------------------------------
+CREATE OR REPLACE TRIGGER plx_tr_example_events
+AFTER INSERT OR UPDATE OR DELETE ON plx_emp
+BEGIN
+  IF INSERTING THEN
+    DBMS_OUTPUT.PUT_LINE('An INSERT statement occurred');
+  ELSIF UPDATING THEN
+    DBMS_OUTPUT.PUT_LINE('An UPDATE statement occurred');
+  ELSIF DELETING THEN
+    DBMS_OUTPUT.PUT_LINE('A DELETE statement occurred');
+  END IF;
+END;
+/
+
+--------------------------------------------------------------------------------
+23. WHEN CONDITION / UPDATING(column)
+--------------------------------------------------------------------------------
+CREATE OR REPLACE TRIGGER plx_tr_example_when
+AFTER UPDATE OF salary ON plx_emp
+FOR EACH ROW
+WHEN (NEW.salary > OLD.salary)
+BEGIN
+  DBMS_OUTPUT.PUT_LINE('Increase only: ' || :NEW.emp_id);
+END;
+/
+
+-- WHEN: NEW / OLD have NO colon; inside BEGIN, use :NEW / :OLD.
+-- UPDATING('SALARY') is useful in multi-event row triggers.
+
+--------------------------------------------------------------------------------
+24. COMPOUND TRIGGER
+--------------------------------------------------------------------------------
+CREATE OR REPLACE TRIGGER plx_tr_example_compound
+FOR UPDATE OF salary ON plx_emp
+COMPOUND TRIGGER
+  g_count NUMBER := 0;
+  AFTER EACH ROW IS
+  BEGIN
+    g_count := g_count + 1;
+  END AFTER EACH ROW;
+  AFTER STATEMENT IS
+  BEGIN
+    DBMS_OUTPUT.PUT_LINE('Updated rows: ' || g_count);
+  END AFTER STATEMENT;
+END plx_tr_example_compound;
+/
+
+--------------------------------------------------------------------------------
+25. EXCEPTION, RAISE_APPLICATION_ERROR
+--------------------------------------------------------------------------------
+BEGIN
+  IF 5 < 10 THEN
+    RAISE_APPLICATION_ERROR(-20203, 'Demo custom error');
+  END IF;
+EXCEPTION
+  WHEN OTHERS THEN
+    DBMS_OUTPUT.PUT_LINE('Caught: ' || SQLERRM);
+END;
+/
+
+-- User-defined error codes commonly use -20000 through -20999.
+
+--------------------------------------------------------------------------------
+26. DBMS_OUTPUT, SQL%ROWCOUNT
+--------------------------------------------------------------------------------
+SET SERVEROUTPUT ON
+BEGIN
+  UPDATE plx_emp SET salary = salary + 1 WHERE emp_id = 101;
+  DBMS_OUTPUT.PUT_LINE('Rows affected = ' || SQL%ROWCOUNT);
+  ROLLBACK;
+END;
+/
+
+--------------------------------------------------------------------------------
+27. CURSOR FOR LOOP IN PROCEDURE
+--------------------------------------------------------------------------------
+CREATE OR REPLACE PROCEDURE plx_pr_example_cursor
+AS
+BEGIN
+  FOR r IN (SELECT emp_name, salary FROM plx_emp ORDER BY emp_id) LOOP
+    DBMS_OUTPUT.PUT_LINE(r.emp_name || ': ' || r.salary);
+  END LOOP;
+END;
+/
+EXEC plx_pr_example_cursor
+
+--------------------------------------------------------------------------------
+28. ENABLE / DISABLE / RECOMPILE / DROP
+--------------------------------------------------------------------------------
+ALTER PROCEDURE plx_pr_example_in COMPILE;
+ALTER FUNCTION plx_fn_double COMPILE;
+ALTER TRIGGER plx_tr_example_when DISABLE;
+ALTER TRIGGER plx_tr_example_when ENABLE;
+ALTER TRIGGER plx_tr_example_when COMPILE;
+
+-- Destructive options (do not execute unless removing the object):
+-- DROP PROCEDURE plx_pr_example_in;
+-- DROP FUNCTION plx_fn_double;
+-- DROP TRIGGER plx_tr_example_when;
+
+--------------------------------------------------------------------------------
+29. SHOW ERRORS AND DATA DICTIONARY QUERIES
+--------------------------------------------------------------------------------
+SHOW ERRORS PROCEDURE plx_pr_example_in
+SHOW ERRORS FUNCTION plx_fn_double
+SHOW ERRORS TRIGGER plx_tr_example_when
+
+SELECT object_name, object_type, status FROM user_objects
+WHERE object_name LIKE 'PLX_%' ORDER BY object_name;
+
+SELECT trigger_name, triggering_event, status FROM user_triggers
+WHERE trigger_name LIKE 'PLX_%' ORDER BY trigger_name;
+
+--------------------------------------------------------------------------------
+30. EXECUTE SQL FILES, SPOOL AND EXIT
+--------------------------------------------------------------------------------
+@C:\sql_lab\00_PLSQL_Setup.sql
+@C:\sql_lab\01_Procedures.sql
+@C:\sql_lab\02_Functions.sql
+@C:\sql_lab\03_Triggers.sql
+
+SPOOL C:\sql_lab\PLSQL_Output.txt
+SELECT emp_id, emp_name, salary FROM plx_emp ORDER BY emp_id;
+SPOOL OFF
+
+EXIT
+
+--------------------------------------------------------------------------------
+31. ONE-PAGE RAPID REVISION COMMANDS
+--------------------------------------------------------------------------------
+Exam Task                    Core command / format
+-----------------------------------------------------------------------
+Make procedure                CREATE OR REPLACE PROCEDURE name(p IN NUMBER)
+Run procedure                 EXEC name(10)
+Procedure OUT                 VARIABLE x NUMBER; EXEC name(:x); PRINT x
+Make function                 CREATE OR REPLACE FUNCTION name(...) RETURN NUMBER
+Call function                 SELECT name(10) FROM dual;
+Make BEFORE trigger           BEFORE INSERT ON table FOR EACH ROW
+Make AFTER trigger            AFTER UPDATE ON table FOR EACH ROW
+Access old/new                :OLD.column / :NEW.column
+Trigger only if condition     WHEN (NEW.column > OLD.column)
+Show output                   SET SERVEROUTPUT ON
+Compile stored code          END; followed by / on next line
+Check errors                  SHOW ERRORS PROCEDURE/FUNCTION/TRIGGER name
+Check compiled objects        SELECT * FROM user_objects;
+Check triggers                SELECT * FROM user_triggers;
+Run stored script             @C:\sql_lab\Scenario_RunAll.sql
+
+-- This is a quick-reference lookup, not a SQL program.
+

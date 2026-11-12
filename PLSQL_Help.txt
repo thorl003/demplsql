@@ -1,0 +1,378 @@
+================================================================================
+ORACLE SQL*PLUS - HELP: TRIGGERS, PROCEDURES, FUNCTIONS & DEBUGGING
+================================================================================
+
+INDEX
+  01. CMD VS SQL> : WHERE EACH COMMAND IS TYPED
+  02. START SQL*PLUS AND LOGIN
+  03. ONE-TIME USER/SCHEMA SETUP (ONLY IF NEEDED)
+  04. CREATE SAMPLE TABLES AND INSERT VALUES
+  05. ENABLE OUTPUT AND RUN PL/SQL BLOCKS
+  06. CREATE / REPLACE AND RUN A PROCEDURE
+  07. CREATE / REPLACE AND RUN A FUNCTION
+  08. CREATE A TRIGGER AND FIRE IT WITH DML
+  09. IN / OUT / IN OUT PARAMETERS IN SQL*PLUS
+  10. WHAT IS :NEW, :OLD, BEFORE, AFTER, FOR EACH ROW?
+  11. COMMIT / ROLLBACK / TRIGGER SIDE EFFECTS
+  12. VIEW OBJECTS, DESCRIBE AND SOURCE CODE
+  13. COMPILE, ENABLE, DISABLE, DROP
+  14. RUN A .SQL FILE / CAPTURE A SPOOL OUTPUT
+  15. MOST COMMON COMPILATION AND RUNTIME ERRORS
+  16. EXAM QUICK LOOKUP: WHAT COMMAND FOR WHAT TASK?
+  17. EXECUTION ORDER FOR THE INCLUDED FILES
+
+CONVENTIONS
+  [CMD] = Windows Command Prompt; [SQL>] = inside Oracle SQL*Plus.
+  Do not type the markers [CMD], [SQL>] or SQL> when copying commands.
+  Run PL/SQL definitions with / on a NEW line after END;.
+  Sample schema uses PLX_ prefix to avoid conflicting with other class tables.
+  One-time setup should be run ONLY in an empty practice schema.
+
+--------------------------------------------------------------------------------
+01. CMD VS SQL> : WHERE EACH COMMAND IS TYPED
+--------------------------------------------------------------------------------
+[CMD]
+sqlplus -v
+sqlplus /nolog
+
+[SQL>]
+CONNECT college@localhost:1521/XEPDB1
+SHOW USER
+SET SERVEROUTPUT ON
+
+SQL command          -> usually end with ;
+PL/SQL block          -> END; then / on its own separate line
+SQL*Plus commands    -> e.g., SHOW USER; DESC PLX_EMP; SET SERVEROUTPUT ON
+OS imports (sqlldr)  -> type in CMD, not inside SQL>
+
+Example: EXEC plx_pr_greet('Arun') is entered at SQL> without typing SQL>.
+
+--------------------------------------------------------------------------------
+02. START SQL*PLUS AND LOGIN
+--------------------------------------------------------------------------------
+[CMD]
+sqlplus /nolog
+
+[SQL>]
+CONNECT college@localhost:1521/XEPDB1
+-- Enter password when prompted.
+SHOW USER
+SET SERVEROUTPUT ON SIZE UNLIMITED
+SET LINESIZE 160
+SET PAGESIZE 100
+
+-- XEPDB1 is a common Oracle XE PDB service. Some installs use FREEPDB1.
+-- To leave:
+EXIT
+
+--------------------------------------------------------------------------------
+03. ONE-TIME USER/SCHEMA SETUP (ONLY IF NEEDED)
+--------------------------------------------------------------------------------
+-- Connect as a database administrator to the PDB, NOT as COLLEGE.
+CONNECT system@localhost:1521/XEPDB1
+
+-- Only if this user has not yet been created:
+CREATE USER college IDENTIFIED BY College123;
+GRANT CREATE SESSION, CREATE TABLE, CREATE PROCEDURE,
+      CREATE TRIGGER, CREATE SEQUENCE TO college;
+ALTER USER college QUOTA 100M ON USERS;
+
+-- Log into the student schema:
+CONNECT college@localhost:1521/XEPDB1
+
+-- The standard practice is to create a USER/SCHEMA in the existing Oracle PDB.
+-- Do NOT use MySQL-style CREATE DATABASE college; here.
+
+--------------------------------------------------------------------------------
+04. CREATE SAMPLE TABLES AND INSERT VALUES
+--------------------------------------------------------------------------------
+-- Simplest practice: run the included setup file in SQL*Plus:
+@C:\sql_lab\00_PLSQL_Setup.sql
+
+-- It creates PLX_DEPT, PLX_EMP, PLX_AUDIT, PLX_EVENTS, sequences,
+-- and inserts sample employee data. Run once in a fresh lab schema.
+SELECT * FROM plx_dept;
+SELECT emp_id, emp_name, salary FROM plx_emp ORDER BY emp_id;
+
+-- Full no-file example for a fresh schema:
+CREATE TABLE simple_numbers (id NUMBER PRIMARY KEY, val NUMBER);
+INSERT INTO simple_numbers VALUES (1, 25);
+INSERT INTO simple_numbers VALUES (2, 50);
+COMMIT;
+SELECT * FROM simple_numbers;
+
+-- If a table already exists, do not CREATE it again.
+
+--------------------------------------------------------------------------------
+05. ENABLE OUTPUT AND RUN PL/SQL BLOCKS
+--------------------------------------------------------------------------------
+SET SERVEROUTPUT ON
+
+BEGIN
+  DBMS_OUTPUT.PUT_LINE('Hello Oracle PL/SQL');
+END;
+/
+
+-- BEGIN ... END; is the block; the / executes the block in SQL*Plus.
+-- If nothing prints, re-run SET SERVEROUTPUT ON before executing.
+
+--------------------------------------------------------------------------------
+06. CREATE / REPLACE AND RUN A PROCEDURE
+--------------------------------------------------------------------------------
+CREATE OR REPLACE PROCEDURE plx_pr_greet(p_name IN VARCHAR2)
+AS
+BEGIN
+  DBMS_OUTPUT.PUT_LINE('Welcome ' || p_name);
+END;
+/
+
+EXEC plx_pr_greet('Arun')
+
+-- Alternative invocation:
+BEGIN
+  plx_pr_greet('Bina');
+END;
+/
+
+-- To inspect errors:
+SHOW ERRORS PROCEDURE plx_pr_greet
+
+--------------------------------------------------------------------------------
+07. CREATE / REPLACE AND RUN A FUNCTION
+--------------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION plx_fn_square(p_num IN NUMBER)
+RETURN NUMBER
+AS
+BEGIN
+  RETURN p_num * p_num;
+END;
+/
+
+-- Function invoked in SQL:
+SELECT plx_fn_square(6) AS square_result FROM dual;
+
+-- Function invoked inside PL/SQL:
+BEGIN
+  DBMS_OUTPUT.PUT_LINE(plx_fn_square(7));
+END;
+/
+
+SHOW ERRORS FUNCTION plx_fn_square
+
+--------------------------------------------------------------------------------
+08. CREATE A TRIGGER AND FIRE IT WITH DML
+--------------------------------------------------------------------------------
+-- First run the setup file that creates PLX_EMP and PLX_AUDIT.
+CREATE OR REPLACE TRIGGER plx_tr_demo_insert
+AFTER INSERT ON plx_emp
+FOR EACH ROW
+BEGIN
+  INSERT INTO plx_audit(audit_id, emp_id, action_type, old_salary,
+                        new_salary, logged_at)
+  VALUES (plx_audit_seq.NEXTVAL, :NEW.emp_id, 'INSERT', NULL,
+          :NEW.salary, SYSTIMESTAMP);
+END;
+/
+
+-- INSERT fires the trigger automatically. You do not EXEC a trigger.
+INSERT INTO plx_emp(emp_id, emp_name, dept_id, salary)
+VALUES (109, 'Test', 10, 45000);
+SELECT * FROM plx_audit WHERE emp_id = 109;
+ROLLBACK;
+-- A normal DML audit trigger is rolled back with the DML it audits.
+
+--------------------------------------------------------------------------------
+09. IN / OUT / IN OUT PARAMETERS IN SQL*PLUS
+--------------------------------------------------------------------------------
+-- IN: input only; OUT: result; IN OUT: input and updated result.
+VARIABLE v_count NUMBER
+EXEC plx_pr_dept_count(10, :v_count)
+PRINT v_count
+
+VARIABLE v_amount NUMBER
+EXEC :v_amount := 100
+EXEC plx_pr_add_to_amount(:v_amount, 25)
+PRINT v_amount
+
+-- The procedures above are included in the Scenario program.
+-- Remember the colon prefix when passing SQL*Plus bind variables.
+
+--------------------------------------------------------------------------------
+10. WHAT IS :NEW, :OLD, BEFORE, AFTER, FOR EACH ROW?
+--------------------------------------------------------------------------------
+BEFORE INSERT        -> runs before INSERT changes row
+AFTER INSERT         -> runs after INSERT changes row
+BEFORE UPDATE OF col -> runs before a statement updating col
+AFTER DELETE         -> runs after DELETE
+FOR EACH ROW         -> one execution per affected row
+(no FOR EACH ROW)    -> one execution per SQL statement
+
+:NEW.salary          -> NEW salary (INSERT or UPDATE row trigger)
+:OLD.salary          -> OLD salary (UPDATE or DELETE row trigger)
+
+-- :NEW fields may be assigned in BEFORE ROW triggers.
+-- In AFTER ROW triggers, :NEW fields are read-only.
+-- For WHEN (NEW.salary > OLD.salary), omit the colon INSIDE WHEN.
+
+--------------------------------------------------------------------------------
+11. COMMIT / ROLLBACK / TRIGGER SIDE EFFECTS
+--------------------------------------------------------------------------------
+-- A procedure or trigger does not automatically COMMIT your normal DML.
+UPDATE plx_emp SET salary = salary + 100 WHERE emp_id = 101;
+SELECT salary FROM plx_emp WHERE emp_id = 101;
+ROLLBACK;           -- Undo uncommitted change and its normal audit rows.
+
+UPDATE plx_emp SET salary = salary + 100 WHERE emp_id = 101;
+COMMIT;             -- Save change and normal trigger audit rows.
+
+-- DDL (CREATE/ALTER/DROP) performs implicit commits in Oracle.
+-- Thus do not rely on ROLLBACK to undo a CREATE PROCEDURE or CREATE TRIGGER.
+-- Avoid COMMIT/ROLLBACK inside ordinary DML triggers (ORA-04092).
+
+--------------------------------------------------------------------------------
+12. VIEW OBJECTS, DESCRIBE AND SOURCE CODE
+--------------------------------------------------------------------------------
+DESC plx_emp
+DESC plx_pr_raise_salary
+
+SELECT object_name, object_type, status
+FROM user_objects
+WHERE object_name LIKE 'PLX_%'
+ORDER BY object_type, object_name;
+
+SELECT trigger_name, triggering_event, status
+FROM user_triggers
+WHERE trigger_name LIKE 'PLX_%';
+
+SELECT name, type, line, text
+FROM user_source
+WHERE name = 'PLX_PR_RAISE_SALARY'
+ORDER BY line;
+
+SHOW ERRORS PROCEDURE plx_pr_raise_salary
+SHOW ERRORS FUNCTION plx_fn_annual_salary
+SHOW ERRORS TRIGGER plx_tr_salary_guard
+
+--------------------------------------------------------------------------------
+13. COMPILE, ENABLE, DISABLE, DROP
+--------------------------------------------------------------------------------
+ALTER PROCEDURE plx_pr_raise_salary COMPILE;
+ALTER FUNCTION plx_fn_annual_salary COMPILE;
+ALTER TRIGGER plx_tr_salary_guard COMPILE;
+ALTER TRIGGER plx_tr_salary_guard DISABLE;
+ALTER TRIGGER plx_tr_salary_guard ENABLE;
+
+-- Destructive: only if you want to remove an object!
+-- DROP PROCEDURE plx_pr_raise_salary;
+-- DROP FUNCTION plx_fn_annual_salary;
+-- DROP TRIGGER plx_tr_salary_guard;
+
+-- CREATE OR REPLACE updates the object without DROP.
+
+--------------------------------------------------------------------------------
+14. RUN A .SQL FILE / CAPTURE A SPOOL OUTPUT
+--------------------------------------------------------------------------------
+-- In SQL*Plus (after extracting ZIP into C:\sql_lab):
+@C:\sql_lab\00_PLSQL_Setup.sql
+@C:\sql_lab\01_Procedures.sql
+@C:\sql_lab\02_Functions.sql
+@C:\sql_lab\03_Triggers.sql
+
+-- Or run everything in fresh schema:
+@C:\sql_lab\Scenario_RunAll.sql
+
+SPOOL C:\sql_lab\results.txt
+SELECT * FROM plx_emp;
+SPOOL OFF
+
+-- In Windows CMD: sqlplus college@localhost:1521/XEPDB1 @C:\sql_lab\Scenario_RunAll.sql
+-- SQL*Plus prompts for password. Never type the example passwords in production.
+
+--------------------------------------------------------------------------------
+15. MOST COMMON COMPILATION AND RUNTIME ERRORS
+--------------------------------------------------------------------------------
+PLS-00103 (symbol "/" / unexpected token)
+  Fix: Put / alone on the line AFTER END;. Do not put / in a procedure body.
+
+PLS-00201 (identifier must be declared)
+  Fix: Run setup; compile procedures before calling; check spelling/privileges.
+
+ORA-00942 (table/view does not exist)
+  Fix: SHOW USER; SELECT table_name FROM user_tables; run setup first.
+
+ORA-00955 (name already used)
+  Fix: The CREATE was run before; use a fresh schema or CREATE OR REPLACE
+       for code objects. Do not re-run setup on already existing tables.
+
+ORA-00001 (unique constraint violated)
+  Fix: The test row ID already exists. Run fresh or use a new unique ID.
+
+ORA-04098 (trigger invalid and failed re-validation)
+  Fix: SHOW ERRORS TRIGGER trigger_name; fix source and recompile.
+
+ORA-04091 (table is mutating)
+  Fix: Do not read/change the triggering table in its row-level trigger;
+       use :NEW/:OLD or a compound trigger appropriate to the task.
+
+ORA-04092 (COMMIT not allowed in a trigger)
+  Fix: Remove COMMIT/ROLLBACK from normal triggers; commit in caller.
+
+ORA-06502 (numeric/value error)
+  Fix: Check datatypes, strings, numeric conversions and variable sizes.
+
+ORA-01403 (no data found)
+  Fix: SELECT INTO returned zero rows; handle NO_DATA_FOUND.
+
+ORA-01422 (exact fetch returns more than requested)
+  Fix: SELECT INTO returned >1 row; use PK condition or cursor.
+
+PLS-00306 (wrong number or types of arguments)
+  Fix: Match the declared procedure/function parameters.
+
+No DBMS_OUTPUT printed
+  Fix: SET SERVEROUTPUT ON before executing the block.
+
+SQL*Plus SQL command not recognized
+  Fix: Type SQL*Plus commands at SQL>, OS commands in CMD.
+
+--------------------------------------------------------------------------------
+16. EXAM QUICK LOOKUP: WHAT COMMAND FOR WHAT TASK?
+--------------------------------------------------------------------------------
+Task                                Command
+--------------------------------------------------------------------------
+Create stored procedure             CREATE OR REPLACE PROCEDURE ...
+Call stored procedure               EXEC procedure_name(...)
+Return value through OUT           VARIABLE x NUMBER; EXEC proc(:x); PRINT x
+Create function                     CREATE OR REPLACE FUNCTION ... RETURN ...
+Call function in query              SELECT function_name(...) FROM dual;
+Create automatic DML trigger        CREATE OR REPLACE TRIGGER ...
+Fire INSERT trigger                 INSERT INTO table VALUES (...);
+Fire UPDATE trigger                 UPDATE table SET ... WHERE ...;
+Fire DELETE trigger                 DELETE FROM table WHERE ...;
+Show compilation error             SHOW ERRORS PROCEDURE/FUNCTION/TRIGGER name
+List all compiled objects          SELECT ... FROM user_objects;
+Check triggers                      SELECT ... FROM user_triggers;
+Enable / disable trigger           ALTER TRIGGER name ENABLE / DISABLE;
+Run saved .sql code                @C:\sql_lab\filename.sql
+Show print statements              SET SERVEROUTPUT ON
+Save session output                SPOOL file.txt / SPOOL OFF
+
+--------------------------------------------------------------------------------
+17. EXECUTION ORDER FOR THE INCLUDED FILES
+--------------------------------------------------------------------------------
+FASTEST EXAM PATH
+  Step 1. [CMD] sqlplus /nolog
+  Step 2. [SQL>] CONNECT college@localhost:1521/XEPDB1
+  Step 3. [SQL>] SET SERVEROUTPUT ON
+  Step 4. [SQL>] @C:\sql_lab\00_PLSQL_Setup.sql
+  Step 5. [SQL>] @C:\sql_lab\01_Procedures.sql
+  Step 6. [SQL>] @C:\sql_lab\02_Functions.sql
+  Step 7. [SQL>] @C:\sql_lab\03_Triggers.sql
+  Step 8. [SQL>] SELECT * FROM plx_audit ORDER BY audit_id;
+
+ALTERNATIVE: In a FRESH schema, Steps 4-7 are equivalent to:
+  @C:\sql_lab\Scenario_RunAll.sql
+
+The setup creates lab tables. A second run will cause name/PK errors.
+Use the exact service name installed on your machine.
+
